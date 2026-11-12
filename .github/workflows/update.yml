@@ -1,9 +1,10 @@
 name: Оновлення даних
 
+# Один запуск працює ~5,7 год і щохвилини оновлює сайт, потім сам запускає наступний.
+# Розклад — лише запасний спосіб перезапуску, якщо ланцюжок обірветься.
 on:
   schedule:
-    # кожні 10 хв з 08:00 до ~01:00 за Києвом (час у UTC)
-    - cron: '*/10 6-22 * * *'
+    - cron: '7 */3 * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -12,18 +13,19 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: scraper
+  cancel-in-progress: true
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 355
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: https://slade444.github.io/misciavzali/
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,10 +33,13 @@ jobs:
           node-version: 20
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - name: Зібрати дані з сайту
-        run: node scrape.mjs
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v4
+      - name: Збирати й публікувати щохвилини
+        run: node loop.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_MINUTES: '340'
+      - name: Запустити наступний цикл
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api "repos/$GITHUB_REPOSITORY/actions/workflows/update.yml/dispatches" -f ref=main
