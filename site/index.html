@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Місця в залі · Вінниця</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a box-office board — one row per hall, session tiles left to right in time order, seat map in an overlay. */
+:root{
+  --bg:#f3f2f7; --panel:#ffffff; --line:#dddbe6; --fg:#1c1a26; --muted:#6c6880;
+  --accent:#5b3fd6; --accent-soft:#ebe6ff;
+  --sold:#f08a12; --free:#cfccd9; --now:#1f9d55; --now-soft:#e3f6ea;
+  --display:"Unbounded","Segoe UI",system-ui,sans-serif;
+  --body:"Inter","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121018; --panel:#1b1924; --line:#2e2b3b; --fg:#ecebf3; --muted:#9a96ad;
+  --accent:#9c87ff; --accent-soft:#2a2346;
+  --sold:#ff9d2e; --free:#3b3849; --now:#3ccf7a; --now-soft:#163525; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121018; --panel:#1b1924; --line:#2e2b3b; --fg:#ecebf3; --muted:#9a96ad;
+  --accent:#9c87ff; --accent-soft:#2a2346;
+  --sold:#ff9d2e; --free:#3b3849; --now:#3ccf7a; --now-soft:#163525; color-scheme:dark}
+
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.45}
+.wrap{max-width:1280px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--display);font-weight:700;font-size:22px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 small{display:block;font-family:var(--body);font-weight:500;font-size:13px;color:var(--muted);letter-spacing:0;margin-top:4px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select,button,textarea{font:inherit;color:inherit}
+select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.btn:focus-visible,select:focus-visible,.tile:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.banner{background:var(--accent-soft);border-radius:10px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.banner b{font-weight:600}
+.banner.stale{background:color-mix(in srgb,var(--sold) 18%,var(--panel))}
+
+.stats{display:flex;flex-wrap:wrap;gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;min-width:140px;flex:1 1 140px}
+.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat .v{font-family:var(--display);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .v small{font-family:var(--body);font-size:13px;color:var(--muted);font-weight:500}
+
+.halls{display:flex;flex-direction:column;gap:10px}
+.hall{background:var(--panel);border:1px solid var(--line);border-radius:12px;display:grid;grid-template-columns:120px 1fr;overflow:hidden}
+.hall-h{padding:12px 14px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.hall-h .n{font-family:var(--display);font-weight:700;font-size:17px}
+.hall-h .m{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.hall-h .t{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:4px}
+.tiles{display:flex;flex-wrap:wrap;gap:8px;padding:10px;min-width:0}
+.tile{all:unset;box-sizing:border-box;cursor:pointer;width:150px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;background:var(--bg)}
+.tile:hover{border-color:var(--accent)}
+.tile .time{font-family:var(--mono);font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+.tile .title{font-size:12px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;min-height:2.5em}
+.tile .cnt{font-variant-numeric:tabular-nums;font-size:13px}
+.tile .cnt b{font-size:15px}
+.bar{height:4px;background:var(--free);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--sold)}
+.tile.past{opacity:.55}
+.tile.now{background:var(--now-soft);border-color:var(--now);opacity:1}
+.pill{font-family:var(--body);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--now)}
+.empty{color:var(--muted);padding:24px;text-align:center;background:var(--panel);border-radius:12px;border:1px dashed var(--line)}
+
+details.howto{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+details.howto summary{cursor:pointer;padding:12px 16px;font-weight:600}
+.howto-body{padding:0 16px 16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.howto-body > div{min-width:0;display:flex;flex-direction:column;gap:8px}
+.howto-body h3{margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.howto-body ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;max-width:65ch}
+code.box{display:block;font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-all;user-select:all}
+textarea{width:100%;box-sizing:border-box;min-height:90px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;font-family:var(--mono);font-size:12px;resize:vertical}
+.msg{font-size:13px;min-height:1.4em}
+.msg.err{color:#d23b3b}
+.msg.ok{color:var(--now)}
+
+.overlay{position:fixed;inset:0;background:rgb(10 8 20 / .55);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+.dlg{background:var(--panel);border-radius:14px;max-width:min(1100px,100%);max-height:92vh;width:100%;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line)}
+.dlg-h{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}
+.dlg-h h2{margin:0;font-family:var(--display);font-size:17px;font-weight:700;text-wrap:balance}
+.dlg-h h2 span{display:block;font-family:var(--body);font-size:13px;font-weight:500;color:var(--muted)}
+.dlg-b{padding:16px;overflow:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin-bottom:12px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+.seats{display:grid;gap:3px;width:max-content;margin:0 auto}
+.seat{width:18px;height:18px;border-radius:4px;background:var(--free);font-family:var(--mono);font-size:10px;line-height:18px;text-align:center;color:var(--fg)}
+.seat.sold{background:var(--sold);color:#1c1a26}
+.seat.gap{background:transparent}
+.dlg-f{padding:12px 16px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;gap:16px}
+.close{all:unset;cursor:pointer;font-size:22px;line-height:1;padding:4px 8px;border-radius:6px}
+.close:focus-visible{outline:2px solid var(--accent)}
+
+@media (max-width:720px){
+  .hall{grid-template-columns:1fr}
+  .hall-h{border-right:0;border-bottom:1px solid var(--line);flex-direction:row;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
+  .hall-h .t{margin-top:0}
+  .tile{width:calc(50% - 4px)}
+  .howto-body{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:no-preference){.tile{transition:border-color .15s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Місця в залі<small>Cinema City Вінниця · продані квитки по сеансах</small></h1>
+    <div class="controls">
+      <label for="dateSel" class="sr" hidden>Дата</label>
+      <select id="dateSel" aria-label="Дата"></select>
+      <button class="btn ghost" id="reload" type="button">Оновити зараз</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+  <div class="stats" id="stats"></div>
+  <div class="halls" id="halls"></div>
+
+  </div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+    <div class="dlg-h">
+      <h2 id="dlgTitle"></h2>
+      <div class="controls">
+        <button class="btn ghost" type="button" id="toggleOrig">Оригінал з сайту</button>
+        <button class="close" type="button" id="closeDlg" aria-label="Закрити">×</button>
+      </div>
+    </div>
+    <div class="dlg-b">
+      <div class="legend"><span><i style="background:var(--sold)"></i>Продано</span><span><i style="background:var(--free)"></i>Вільно</span></div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <div class="dlg-f" id="dlgFoot"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+const SOLD=new Set(['S','V','T']);
+const GAP=new Set(['*','_',' ','.']);
+const $=id=>document.getElementById(id);
+let state={raw:null,savedAt:null,demo:false,date:null};
+let dlg={session:null,orig:false};
+
+/* ---------- helpers ---------- */
+const pad=n=>String(n).padStart(2,'0');
+const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
+const hhmm=t=>String(t||'').slice(0,5);
+const toMin=t=>{const [h,m]=String(t).split(':').map(Number);return h*60+(m||0)};
+const nowMin=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const clean=s=>String(s||'').replace(/\r/g,'').replace(/\n/g,'').trim();
+const countSold=s=>{let n=0;for(const c of String(s||''))if(SOLD.has(c))n++;return n};
+const fmtDate=d=>{try{return new Date(d+'T12:00:00').toLocaleDateString('uk-UA',{weekday:'short',day:'numeric',month:'long'})}catch(e){return d}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- parsing ---------- */
+function normalize(obj){
+  if(obj&&obj.moveArray)obj=obj.moveArray;
+  if(!obj||!Array.isArray(obj.showDates))throw new Error('У даних немає списку showDates. Скопіюйте саме nowData.moveArray.');
+  return obj;
+}
+function dates(raw){return [...new Set(raw.showDates.map(d=>String(d.date||'').slice(0,10)).filter(Boolean))].sort()}
+function hallsFor(raw,date){
+  const halls=new Map();
+  for(const sd of raw.showDates){
+    if(!String(sd.date||'').startsWith(date))continue;
+    for(const mv of (sd.movies||[])){
+      for(const md of (mv.showDates||[])){
+        if(!String(md.date||'').startsWith(date))continue;
+        for(const s of (md.sessions||[])){
+          const h=Number(s.hallNumber);
+          if(!halls.has(h))halls.set(h,{hall:h,seats:Number(s.numberSeats)||0,sessions:[]});
+          halls.get(h).sessions.push({title:mv.title||'—',time:s.timeStart,seatStr:s.stringStatusSeat||'',total:Number(s.numberSeats)||0,hall:h});
+        }
+      }
+    }
+  }
+  const list=[...halls.values()].sort((a,b)=>a.hall-b.hall);
+  for(const h of list){
+    h.sessions.sort((a,b)=>toMin(a.time)-toMin(b.time));
+    h.sessions.forEach(s=>{s.sold=countSold(s.seatStr);s.siblings=h.sessions});
+    h.sold=h.sessions.reduce((a,s)=>a+s.sold,0);
+  }
+  return list;
+}
+function isCurrent(s,isToday){
+  if(!isToday)return false;
+  const n=nowMin(),st=toMin(s.time);
+  if(n<st)return false;
+  for(const o of s.siblings){if(o!==s){const t=toMin(o.time);if(t>st&&t<=n)return false}}
+  return true;
+}
+
+/* ---------- data ---------- */
+let loadErr=null;
+async function fetchData(){
+  try{
+    const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    state.raw=normalize(j.moveArray);state.savedAt=Date.parse(j.updatedAt);state.demo=false;loadErr=null;
+  }catch(e){loadErr=e}
+  if(state.raw)render();else showErr();
+}
+function showErr(){
+  $('banner').className='banner stale';
+  $('banner').textContent='Дані ще не завантажені. Спробуйте за кілька хвилин.';
+  $('halls').innerHTML='';$('stats').innerHTML='';
+}
+$('reload').onclick=fetchData;
+$('dateSel').onchange=e=>{state.date=e.target.value;render()};
+
+/* ---------- render ---------- */
+function render(){
+  const ds=dates(state.raw);const today=todayStr();
+  if(!state.date||!ds.includes(state.date))state.date=ds.includes(today)?today:(ds[0]||today);
+  $('dateSel').innerHTML=ds.map(d=>`<option value="${d}"${d===state.date?' selected':''}>${esc(fmtDate(d))}${d===today?' · сьогодні':''}</option>`).join('');
+  const isToday=state.date===today;
+  const halls=hallsFor(state.raw,state.date);
+
+  const ageMin=Math.round((Date.now()-state.savedAt)/60000);
+  const b=$('banner');
+  const at=new Date(state.savedAt).toLocaleString('uk-UA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  b.className='banner'+(ageMin>=30||loadErr?' stale':'');
+  b.innerHTML=`<span>Дані з сайту кінотеатру станом на <b>${esc(at)}</b>${ageMin>=1?` · ${ageMin<60?ageMin+' хв':Math.round(ageMin/60)+' год'} тому`:' · щойно'}</span><span>${loadErr?'Не вдалося перевірити оновлення — показано останні дані':'Оновлюється автоматично кожні ~10 хв'}</span>`;
+
+  const all=halls.flatMap(h=>h.sessions);
+  const sold=all.reduce((a,s)=>a+s.sold,0);
+  const cap=all.reduce((a,s)=>a+s.total,0);
+  const cur=all.filter(s=>isCurrent(s,isToday));
+  const curSold=cur.reduce((a,s)=>a+s.sold,0);
+  $('stats').innerHTML=`
+    <div class="stat"><div class="k">Продано за день</div><div class="v">${sold}${cap?` <small>з ${cap} місць</small>`:''}</div></div>
+    <div class="stat"><div class="k">Сеансів</div><div class="v">${all.length} <small>у ${halls.length} залах</small></div></div>
+    <div class="stat"><div class="k">Зараз у залах</div><div class="v">${isToday?curSold:'—'} <small>${isToday?'глядачів на '+cur.length+' сеансах':'не сьогодні'}</small></div></div>`;
+
+  const H=$('halls');
+  if(!halls.length){H.innerHTML='<div class="empty">На цю дату сеансів не знайдено. Оберіть іншу дату або оновіть дані.</div>';return}
+  H.innerHTML='';
+  for(const h of halls){
+    const row=document.createElement('section');row.className='hall';
+    row.innerHTML=`<div class="hall-h"><span class="n">Зал ${h.hall}</span><span class="m">${h.seats} місць · ${h.sessions.length} сеанс.</span><span class="t">Продано: ${h.sold}</span></div><div class="tiles"></div>`;
+    const tl=row.querySelector('.tiles');
+    for(const s of h.sessions){
+      const now=isCurrent(s,isToday);
+      const past=isToday&&!now&&toMin(s.time)<nowMin();
+      const pct=s.total?Math.min(100,Math.round(s.sold/s.total*100)):0;
+      const el=document.createElement('button');el.type='button';
+      el.className='tile'+(now?' now':'')+(past?' past':'');
+      el.innerHTML=`<span class="time">${esc(hhmm(s.time))}${now?'<span class="pill">йде зараз</span>':''}</span><span class="title">${esc(s.title)}</span><span class="cnt"><b>${s.sold}</b> / ${s.total||'?'}</span><span class="bar"><i style="width:${pct}%"></i></span>`;
+      el.title=`${s.title} · ${hhmm(s.time)} · продано ${s.sold}`;
+      el.onclick=()=>openDlg(s);
+      tl.appendChild(el);
+    }
+    H.appendChild(row);
+  }
+}
+
+/* ---------- seat dialog ---------- */
+function openDlg(s){dlg.session=s;dlg.orig=false;drawDlg();$('overlay').hidden=false;$('closeDlg').focus()}
+function drawDlg(){
+  const s=dlg.session;if(!s)return;
+  $('dlgTitle').innerHTML=`${esc(s.title)}<span>Зал ${s.hall} · ${esc(hhmm(s.time))} · ${esc(fmtDate(state.date))}</span>`;
+  $('toggleOrig').textContent=dlg.orig?'Поточний вигляд':'Оригінал з сайту';
+  const rows=clean(s.seatStr).split('/').filter(r=>r.length);
+  const w=rows.reduce((m,r)=>Math.max(m,r.length),0);
+  const g=$('seats');g.style.gridTemplateColumns=`repeat(${w},18px)`;
+  let html='',free=0;
+  for(const r of rows){for(let i=0;i<w;i++){const c=i<r.length?r[i]:' ';
+    let cls='seat';if(SOLD.has(c))cls+=' sold';else if(GAP.has(c))cls+=' gap';else free++;
+    html+=`<span class="${cls}">${dlg.orig?esc(c===' '?'':c):''}</span>`}}
+  g.innerHTML=html||'<span>Схема залу недоступна</span>';
+  const pct=s.total?Math.round(s.sold/s.total*100):0;
+  $('dlgFoot').innerHTML=`<span>Продано: <b>${s.sold}</b></span><span>Вільно: <b>${free}</b></span><span>Усього місць: <b>${s.total||'?'}</b></span><span>Заповненість: <b>${pct}%</b></span>`;
+}
+$('toggleOrig').onclick=()=>{dlg.orig=!dlg.orig;drawDlg()};
+const closeDlg=()=>{$('overlay').hidden=true;dlg.session=null};
+$('closeDlg').onclick=closeDlg;
+$('overlay').addEventListener('click',e=>{if(e.target===$('overlay'))closeDlg()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('overlay').hidden)closeDlg()});
+
+fetchData();
+setInterval(()=>{fetchData().then(()=>{if(dlg.session)drawDlg()})},120000);
+})();
+</script>
+</body>
+</html>
