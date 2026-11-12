@@ -45,7 +45,11 @@ try {
   if (!sessions) throw new Error('Сеансів не знайдено — структура сайту могла змінитися');
 
   writeFileSync('site/data.json', JSON.stringify({ updatedAt: new Date().toISOString(), source: URL, moveArray: { showDates } }));
+  const all = showDates.flatMap(sd => sd.movies.flatMap(m => m.showDates.flatMap(md => md.sessions.map(x => ({ t: m.title, ...x })))));
+  const chars = [...new Set(all.flatMap(x => [...String(x.stringStatusSeat || '')]))].join('');
+  const ex = all[0];
   console.log(`OK: ${keepDates.join(', ')} · сеансів: ${sessions}`);
+  console.log(`Приклад: зал ${ex.hallNumber}, ${ex.timeStart}, місць ${ex.numberSeats}, символи схеми: ${JSON.stringify(chars)}`);
 } finally {
   await browser.close();
 }
