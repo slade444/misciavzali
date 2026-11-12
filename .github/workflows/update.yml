@@ -33,6 +33,8 @@ jobs:
           node-version: 20
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
+      - name: Доступ до сховища артефактів для публікації
+        uses: crazy-max/ghaction-github-runtime@v3
       - name: Збирати й публікувати щохвилини
         run: node loop.mjs
         env:
