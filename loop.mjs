@@ -36,6 +36,25 @@ async function deploy() {
     body: JSON.stringify({ artifact_id: id, pages_build_version: GITHUB_SHA, oidc_token: oidc }),
   });
   if (!r.ok) throw new Error(`Pages ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  const { status_url } = await r.json();
+  // чекаємо, поки GitHub справді опублікує, інакше наступні публікації стають у чергу
+  let st = '?';
+  for (let i = 0; i < 30; i++) {
+    await sleep(3000);
+    try {
+      const q = await fetch(status_url, { headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github+json' } });
+      st = (await q.json()).status;
+    } catch {}
+    if (['succeed', 'deployment_failed', 'deployment_lost', 'deployment_cancelled', 'deployment_content_failed', 'deployment_perms_error', 'deployment_attempt_error'].includes(st)) break;
+  }
+  if (st !== 'succeed') throw new Error(`статус публікації: ${st}`);
+}
+async function liveLag() {
+  try {
+    const r = await fetch(PAGES_URL + 'vinnytsia.json?t=' + Date.now(), { cache: 'no-store' });
+    const j = await r.json();
+    return Math.round((Date.now() - Date.parse(j.updatedAt)) / 1000) + ' с';
+  } catch (e) { return 'н/д'; }
 }
 
 const browser = await chromium.launch();
@@ -59,7 +78,7 @@ while (Date.now() < until) {
     } catch (e) { log(`${slug} ПОМИЛКА: ${e.message}`); }
   }
   if (ok) {
-    try { await deploy(); deployFails = 0; extraWait = 0; log(`опубліковано #${deployN} (${ok}/${CINEMAS.length})`); }
+    try { await deploy(); deployFails = 0; extraWait = 0; log(`опубліковано #${deployN} (${ok}/${CINEMAS.length}) · на сайті дані давністю ${await liveLag()}`); }
     catch (e) { deployFails++; extraWait = Math.min(240_000, 60_000 * deployFails); log(`публікація не вдалася: ${e.message}`); }
   }
   const interval = (kyivHour() >= 2 && kyivHour() < 8) ? INTERVAL_NIGHT : INTERVAL_DAY;
