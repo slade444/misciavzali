@@ -98,7 +98,15 @@ async function pushFirebase(slug, json) {
   last[slug] = cur;
 }
 log(FB ? `режим: Firebase (${DB_URL}), щохвилини` : 'режим: лише GitHub Pages, раз на 5 хв');
-if (FB) { try { await deploy(); log('сайт опубліковано'); } catch (e) { log(`публікація сайту не вдалася: ${e.message}`); } }
+let siteOk = false;
+async function ensureSite() {
+  try {
+    const h = await (await fetch('https://slade444.github.io/misciavzali/?t=' + Date.now(), { cache: 'no-store' })).text();
+    if (h.includes(DB_URL)) { if (!siteOk) log('сайт на GitHub Pages уже з живими даними'); siteOk = true; return; }
+  } catch {}
+  try { await deploy(); log('сайт опубліковано, перевірю ще раз за 5 хв'); } catch (e) { log(`публікація сайту не вдалася: ${e.message}`); }
+}
+if (FB) await ensureSite();
 
 while (Date.now() < until) {
   const started = Date.now();
@@ -113,6 +121,7 @@ while (Date.now() < until) {
       if (round === 1) log(`${slug}: ${sessions} сеансів`);
     } catch (e) { log(`${slug} ПОМИЛКА: ${e.message}`); delete last[slug]; }
   }
+  if (FB && !siteOk && round % 5 === 0) await ensureSite();
   if (FB) { if (round <= 3 || round % 30 === 0) log(`раунд ${round}: записано ${ok}/${CINEMAS.length}`); }
   else if (ok) {
     try {
