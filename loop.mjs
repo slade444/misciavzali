@@ -64,7 +64,7 @@ const ctx = await browser.newContext({
 });
 const page = await ctx.newPage();
 const until = Date.now() + RUN_MINUTES * 60_000;
-let deployFails = 0, extraWait = 0;
+let deployFails = 0, extraWait = 0, staleCount = 0;
 
 while (Date.now() < until) {
   const started = Date.now();
@@ -78,7 +78,13 @@ while (Date.now() < until) {
     } catch (e) { log(`${slug} ПОМИЛКА: ${e.message}`); }
   }
   if (ok) {
-    try { await deploy(); deployFails = 0; extraWait = 0; log(`опубліковано #${deployN} (${ok}/${CINEMAS.length}) · на сайті дані давністю ${await liveLag()}`); }
+    try {
+      await deploy(); deployFails = 0; extraWait = 0;
+      const lag = await liveLag();
+      log(`опубліковано #${deployN} (${ok}/${CINEMAS.length}) · на сайті дані давністю ${lag}`);
+      staleCount = parseInt(lag) > 600 ? staleCount + 1 : 0;
+      if (staleCount >= 5) { log('сайт не оновлюється вже 5 публікацій — перезапускаю цикл'); break; }
+    }
     catch (e) { deployFails++; extraWait = Math.min(240_000, 60_000 * deployFails); log(`публікація не вдалася: ${e.message}`); }
   }
   const interval = (kyivHour() >= 2 && kyivHour() < 8) ? INTERVAL_NIGHT : INTERVAL_DAY;
