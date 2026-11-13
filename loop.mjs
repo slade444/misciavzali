@@ -7,7 +7,7 @@ import * as core from '@actions/core';
 import { CINEMAS, scrapeCinema } from './scrape.mjs';
 
 const RUN_MINUTES = Number(process.env.RUN_MINUTES || 340);
-const INTERVAL_DAY = 60_000;      // вдень: щохвилини
+const INTERVAL_DAY = 300_000;     // вдень: раз на 5 хв (GitHub Pages перестає приймати часті публікації)
 const INTERVAL_NIGHT = 600_000;   // вночі (02:00–07:59 за Києвом): раз на 10 хв
 const PAGES_URL = 'https://slade444.github.io/misciavzali/data/';
 const { GITHUB_REPOSITORY, GITHUB_TOKEN, GITHUB_SHA } = process.env;
@@ -83,7 +83,7 @@ while (Date.now() < until) {
       const lag = await liveLag();
       log(`опубліковано #${deployN} (${ok}/${CINEMAS.length}) · на сайті дані давністю ${lag}`);
       staleCount = parseInt(lag) > 600 ? staleCount + 1 : 0;
-      if (staleCount >= 5) { log('сайт не оновлюється вже 5 публікацій — перезапускаю цикл'); break; }
+      if (staleCount) log(`увага: сайт не показує нові дані (${staleCount} раз поспіль)`);
     }
     catch (e) { deployFails++; extraWait = Math.min(240_000, 60_000 * deployFails); log(`публікація не вдалася: ${e.message}`); }
   }

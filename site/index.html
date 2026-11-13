@@ -277,8 +277,8 @@ function render(){
   const ageMin=Math.round((Date.now()-state.savedAt)/60000);
   const b=$('banner');
   const at=new Date(state.savedAt).toLocaleString('uk-UA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  b.className='banner'+(ageMin>=5||loadErr?' stale':'');
-  b.innerHTML=`<span>Дані з сайту кінотеатру станом на <b>${esc(at)}</b>${ageMin>=1?` · ${ageMin<60?ageMin+' хв':Math.round(ageMin/60)+' год'} тому`:' · щойно'}</span><span>${loadErr?'Не вдалося перевірити оновлення — показано останні дані':'Оновлюється автоматично щохвилини'}</span>`;
+  b.className='banner'+(ageMin>=12||loadErr?' stale':'');
+  b.innerHTML=`<span>Дані з сайту кінотеатру станом на <b>${esc(at)}</b>${ageMin>=1?` · ${ageMin<60?ageMin+' хв':Math.round(ageMin/60)+' год'} тому`:' · щойно'}</span><span>${loadErr?'Не вдалося перевірити оновлення — показано останні дані':'Оновлюється автоматично кожні ~5 хв'}</span>`;
 
   const all=halls.flatMap(h=>h.sessions);
   const sold=all.reduce((a,s)=>a+s.sold,0);
