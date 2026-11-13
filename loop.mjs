@@ -1,13 +1,18 @@
-// Працює кілька годин: щохвилини збирає дані всіх кінотеатрів і публікує сайт на GitHub Pages.
+// Працює кілька годин: збирає дані всіх кінотеатрів.
+// Якщо задано Firebase — щохвилини пише зміни в базу, а сайт на GitHub Pages публікує лише раз на старті.
+// Без Firebase — запасний режим: публікує дані на GitHub Pages раз на 5 хв.
 import { chromium } from 'playwright';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { DefaultArtifactClient } from '@actions/artifact';
 import * as core from '@actions/core';
 import { CINEMAS, scrapeCinema } from './scrape.mjs';
+import { makeFirebase, flatten } from './firebase.mjs';
 
 const RUN_MINUTES = Number(process.env.RUN_MINUTES || 340);
-const INTERVAL_DAY = 300_000;     // вдень: раз на 5 хв (GitHub Pages перестає приймати часті публікації)
+const FB = process.env.FIREBASE_SERVICE_ACCOUNT && process.env.FIREBASE_DB_URL
+  ? makeFirebase(process.env.FIREBASE_SERVICE_ACCOUNT, process.env.FIREBASE_DB_URL) : null;
+const INTERVAL_DAY = FB ? 60_000 : 300_000; // з Firebase щохвилини; лише Pages — раз на 5 хв (частіше GitHub гальмує)
 const INTERVAL_NIGHT = 600_000;   // вночі (02:00–07:59 за Києвом): раз на 10 хв
 const PAGES_URL = 'https://slade444.github.io/misciavzali/data/';
 const { GITHUB_REPOSITORY, GITHUB_TOKEN, GITHUB_SHA } = process.env;
@@ -66,18 +71,39 @@ const page = await ctx.newPage();
 const until = Date.now() + RUN_MINUTES * 60_000;
 let deployFails = 0, extraWait = 0, staleCount = 0;
 
+const last = {};   // що вже записано в Firebase, по містах
+let round = 0;
+async function pushFirebase(slug, json) {
+  const { updatedAt, moveArray } = JSON.parse(json);
+  const cur = flatten(moveArray), prev = last[slug];
+  if (!prev) {
+    await FB.put(`cinemas/${slug}`, { updatedAt, sessions: cur });
+  } else {
+    const upd = { updatedAt };
+    for (const k in cur) if (JSON.stringify(cur[k]) !== JSON.stringify(prev[k])) upd[`sessions/${k}`] = cur[k];
+    for (const k in prev) if (!(k in cur)) upd[`sessions/${k}`] = null;
+    await FB.patch(`cinemas/${slug}`, upd);
+  }
+  last[slug] = cur;
+}
+log(FB ? 'режим: Firebase, щохвилини' : 'режим: лише GitHub Pages, раз на 5 хв');
+if (FB) { try { await deploy(); log('сайт опубліковано'); } catch (e) { log(`публікація сайту не вдалася: ${e.message}`); } }
+
 while (Date.now() < until) {
   const started = Date.now();
   let ok = 0;
+  round++;
   for (const slug of CINEMAS) {
     try {
       const { json, sessions } = await scrapeCinema(page, slug);
       writeFileSync(`site/data/${slug}.json`, json);
+      if (FB) await pushFirebase(slug, json);
       ok++;
-      if (deployN === 0) log(`${slug}: ${sessions} сеансів`);
-    } catch (e) { log(`${slug} ПОМИЛКА: ${e.message}`); }
+      if (round === 1) log(`${slug}: ${sessions} сеансів`);
+    } catch (e) { log(`${slug} ПОМИЛКА: ${e.message}`); delete last[slug]; }
   }
-  if (ok) {
+  if (FB) { if (round <= 3 || round % 30 === 0) log(`раунд ${round}: записано ${ok}/${CINEMAS.length}`); }
+  else if (ok) {
     try {
       await deploy(); deployFails = 0; extraWait = 0;
       const lag = await liveLag();

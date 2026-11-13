@@ -39,6 +39,8 @@ jobs:
         run: node loop.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_DB_URL: ${{ vars.FIREBASE_DB_URL }}
           RUN_MINUTES: '340'
       - name: Запустити наступний цикл
         if: success()

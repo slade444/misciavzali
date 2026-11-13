@@ -219,17 +219,57 @@ function isCurrent(s,isToday){
 }
 
 /* ---------- data ---------- */
+// Firebase Realtime Database: живі дані щохвилини. Порожньо — запасний режим із файлів на сайті.
+const DB_URL='__FIREBASE_DB_URL__'.startsWith('__')?'':'__FIREBASE_DB_URL__';
 let loadErr=null;
-let busy=false;
+let busy=false,es=null,fb=null,rafPending=false;
+function toRaw(sessions){
+  const byDate={};
+  for(const k in sessions){const x=sessions[k];if(!x)continue;
+    (byDate[x.d]=byDate[x.d]||[]).push({title:x.m,showDates:[{date:x.d,sessions:[{hallNumber:x.h,timeStart:x.t,stringStatusSeat:x.s,numberSeats:x.n}]}]})}
+  return {showDates:Object.keys(byDate).map(d=>({date:d,movies:byDate[d]}))};
+}
+function setPath(path,val){
+  const parts=path.split('/').filter(Boolean);
+  if(!parts.length){fb=val||{};return}
+  fb=fb||{};let o=fb;
+  for(let i=0;i<parts.length-1;i++){if(typeof o[parts[i]]!=='object'||!o[parts[i]])o[parts[i]]={};o=o[parts[i]]}
+  const last=parts[parts.length-1];
+  if(val===null)delete o[last];else o[last]=val;
+}
+function applyFb(){
+  if(!fb||!fb.sessions){if(!state.raw)showErr();return}
+  state.raw=toRaw(fb.sessions);state.savedAt=Date.parse(fb.updatedAt)||Date.now();state.demo=false;loadErr=null;
+  if(!rafPending){rafPending=true;requestAnimationFrame(()=>{rafPending=false;render();if(dlg.session)drawDlg()})}
+}
+function connect(){
+  if(!DB_URL)return;
+  if(es)es.close();
+  const want=cinema.slug;
+  es=new EventSource(DB_URL+'/cinemas/'+want+'.json');
+  const on=(type,fn)=>es.addEventListener(type,ev=>{if(want!==cinema.slug)return;try{fn(JSON.parse(ev.data))}catch(e){}});
+  on('put',({path,data})=>{setPath(path,data);applyFb()});
+  on('patch',({path,data})=>{for(const k in data)setPath(path.replace(/\/$/,'')+'/'+k,data[k]);applyFb()});
+  es.onerror=()=>{if(es.readyState===2){loadErr=new Error('stream closed');if(state.raw)render()}};
+}
 async function fetchData(){
   const want=cinema.slug,before=state.savedAt;
   if(busy)return null;busy=true;
   try{
+    if(DB_URL){
+      const r=await fetch(DB_URL+'/cinemas/'+want+'.json',{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      if(want!==cinema.slug)return;
+      fb=j||{};applyFb();
+      if(!es||es.readyState===2)connect();
+    }else{
     const r=await fetch('data/'+want+'.json?t='+Date.now(),{cache:'no-store'});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json();
     if(want!==cinema.slug)return;
     state.raw=normalize(j.moveArray);state.savedAt=Date.parse(j.updatedAt);state.demo=false;loadErr=null;
+    }
   }catch(e){loadErr=e}
   finally{busy=false}
   if(state.raw){render();if(dlg.session)drawDlg()}else showErr();
@@ -253,7 +293,7 @@ function drawTabs(){
 }
 function selectCinema(slug){
   const c=CINEMAS.find(x=>x.slug===slug);if(!c||c===cinema)return;
-  cinema=c;state={raw:null,savedAt:null,demo:false,date:null};loadErr=null;
+  cinema=c;state={raw:null,savedAt:null,demo:false,date:null};loadErr=null;fb=null;if(es){es.close();es=null}
   try{localStorage.setItem('mvz_cinema',slug)}catch(e){}
   if(location.hash!=='#'+slug)history.replaceState(null,'','#'+slug);
   drawTabs();$('halls').innerHTML='<div class="empty">Завантаження…</div>';$('stats').innerHTML='';$('banner').textContent='';
@@ -273,12 +313,13 @@ function render(){
   $('dateSel').innerHTML=ds.map(d=>`<option value="${d}"${d===state.date?' selected':''}>${esc(fmtDate(d))}${d===today?' · сьогодні':''}</option>`).join('');
   const isToday=state.date===today;
   const halls=hallsFor(state.raw,state.date);
+  if(dlg.session){const o=dlg.session,m=halls.flatMap(h=>h.sessions).find(x=>x.hall===o.hall&&x.time===o.time&&x.title===o.title);if(m)dlg.session=m}
 
   const ageMin=Math.round((Date.now()-state.savedAt)/60000);
   const b=$('banner');
   const at=new Date(state.savedAt).toLocaleString('uk-UA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  b.className='banner'+(ageMin>=12||loadErr?' stale':'');
-  b.innerHTML=`<span>Дані з сайту кінотеатру станом на <b>${esc(at)}</b>${ageMin>=1?` · ${ageMin<60?ageMin+' хв':Math.round(ageMin/60)+' год'} тому`:' · щойно'}</span><span>${loadErr?'Не вдалося перевірити оновлення — показано останні дані':'Оновлюється автоматично кожні ~5 хв'}</span>`;
+  b.className='banner'+(ageMin>=(DB_URL?5:12)||loadErr?' stale':'');
+  b.innerHTML=`<span>Дані з сайту кінотеатру станом на <b>${esc(at)}</b>${ageMin>=1?` · ${ageMin<60?ageMin+' хв':Math.round(ageMin/60)+' год'} тому`:' · щойно'}</span><span>${loadErr?'Не вдалося перевірити оновлення — показано останні дані':(DB_URL?'Оновлюється автоматично щохвилини':'Оновлюється автоматично кожні ~5 хв')}</span>`;
 
   const all=halls.flatMap(h=>h.sessions);
   const sold=all.reduce((a,s)=>a+s.sold,0);
@@ -343,8 +384,8 @@ $('overlay').addEventListener('click',e=>{if(e.target===$('overlay'))closeDlg()}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('overlay').hidden)closeDlg()});
 
 fetchData();
-// поки сторінка відкрита — перевіряємо нові дані кожні 30 с; після повернення на вкладку — одразу
-setInterval(()=>{if(!document.hidden)fetchData()},30000);
+// живий потік із бази + страховка: кожні 30 с оновлюємо «хв тому» і перевіряємо зв’язок; після повернення на вкладку — одразу
+setInterval(()=>{if(document.hidden)return;if(DB_URL&&es&&es.readyState!==2){if(state.raw)render()}else fetchData()},30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)fetchData()});
 addEventListener('focus',()=>fetchData());
 addEventListener('pageshow',e=>{if(e.persisted)fetchData()});
