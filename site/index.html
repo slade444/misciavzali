@@ -34,6 +34,7 @@ header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-be
 .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 select,button,textarea{font:inherit;color:inherit}
 select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.btn:disabled{opacity:.7;cursor:default}
 .btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
 .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
 .btn:focus-visible,select:focus-visible,.tile:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -219,8 +220,10 @@ function isCurrent(s,isToday){
 
 /* ---------- data ---------- */
 let loadErr=null;
+let busy=false;
 async function fetchData(){
-  const want=cinema.slug;
+  const want=cinema.slug,before=state.savedAt;
+  if(busy)return null;busy=true;
   try{
     const r=await fetch('data/'+want+'.json?t='+Date.now(),{cache:'no-store'});
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -228,14 +231,21 @@ async function fetchData(){
     if(want!==cinema.slug)return;
     state.raw=normalize(j.moveArray);state.savedAt=Date.parse(j.updatedAt);state.demo=false;loadErr=null;
   }catch(e){loadErr=e}
-  if(state.raw)render();else showErr();
+  finally{busy=false}
+  if(state.raw){render();if(dlg.session)drawDlg()}else showErr();
+  return loadErr?'err':(state.savedAt!==before?'new':'same');
 }
 function showErr(){
   $('banner').className='banner stale';
   $('banner').textContent='Дані ще не завантажені. Спробуйте за кілька хвилин.';
   $('halls').innerHTML='';$('stats').innerHTML='';
 }
-$('reload').onclick=fetchData;
+$('reload').onclick=async()=>{
+  const b=$('reload');b.disabled=true;b.textContent='Оновлюю…';
+  const res=await fetchData();
+  b.textContent=res==='new'?'Оновлено':res==='err'?'Немає зв’язку':'Нових даних ще немає';
+  setTimeout(()=>{b.textContent='Оновити зараз';b.disabled=false},2000);
+};
 function drawTabs(){
   $('tabs').innerHTML=CINEMAS.map(c=>`<button class="tab" role="tab" type="button" data-slug="${c.slug}" aria-selected="${c===cinema}">${esc(c.name)}</button>`).join('');
   $('sub').textContent='Cinema City '+cinema.name+' · продані квитки по сеансах';
@@ -276,8 +286,7 @@ function render(){
   const cur=all.filter(s=>isCurrent(s,isToday));
   const curSold=cur.reduce((a,s)=>a+s.sold,0);
   $('stats').innerHTML=`
-    <div class="stat"><div class="k">Продано за день</div><div class="v">${sold}${cap?` <small>з ${cap} місць</small>`:''}</div></div>
-    <div class="stat"><div class="k">Сеансів</div><div class="v">${all.length} <small>у ${halls.length} залах</small></div></div>
+    <div class="stat"><div class="k">Продано за день</div><div class="v">${sold}</div></div>
     <div class="stat"><div class="k">Зараз у залах</div><div class="v">${isToday?curSold:'—'} <small>${isToday?'глядачів на '+cur.length+' сеансах':'не сьогодні'}</small></div></div>`;
 
   const H=$('halls');
@@ -285,7 +294,7 @@ function render(){
   H.innerHTML='';
   for(const h of halls){
     const row=document.createElement('section');row.className='hall';
-    row.innerHTML=`<div class="hall-h"><span class="n">Зал ${h.hall}</span><span class="m">${h.seats} місць · ${h.sessions.length} сеанс.</span><span class="t">Продано: ${h.sold}</span></div><div class="tiles"></div>`;
+    row.innerHTML=`<div class="hall-h"><span class="n">Зал ${h.hall}</span><span class="m">${h.seats} місць</span><span class="t">Продано: ${h.sold}</span></div><div class="tiles"></div>`;
     const tl=row.querySelector('.tiles');
     let shown=h.sessions,nextS=null;
     if(simple){
@@ -334,7 +343,11 @@ $('overlay').addEventListener('click',e=>{if(e.target===$('overlay'))closeDlg()}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('overlay').hidden)closeDlg()});
 
 fetchData();
-setInterval(()=>{fetchData().then(()=>{if(dlg.session)drawDlg()})},60000);
+// поки сторінка відкрита — перевіряємо нові дані кожні 30 с; після повернення на вкладку — одразу
+setInterval(()=>{if(!document.hidden)fetchData()},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)fetchData()});
+addEventListener('focus',()=>fetchData());
+addEventListener('pageshow',e=>{if(e.persisted)fetchData()});
 })();
 </script>
 </body>
