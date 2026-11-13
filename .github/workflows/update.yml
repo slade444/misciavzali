@@ -40,7 +40,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FIREBASE_DB_URL: ${{ vars.FIREBASE_DB_URL }}
+          FIREBASE_DB_URL: >-
+            https://misciavzali-default-rtdb.europe-west1.firebasedatabase.app
+            https://misciavzali-default-rtdb.firebaseio.com
+            https://misciavzali-default-rtdb.asia-southeast1.firebasedatabase.app
           RUN_MINUTES: '340'
       - name: Запустити наступний цикл
         if: success()

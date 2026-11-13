@@ -2,7 +2,7 @@
 // Якщо задано Firebase — щохвилини пише зміни в базу, а сайт на GitHub Pages публікує лише раз на старті.
 // Без Firebase — запасний режим: публікує дані на GitHub Pages раз на 5 хв.
 import { chromium } from 'playwright';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { DefaultArtifactClient } from '@actions/artifact';
 import * as core from '@actions/core';
@@ -10,8 +10,19 @@ import { CINEMAS, scrapeCinema } from './scrape.mjs';
 import { makeFirebase, flatten } from './firebase.mjs';
 
 const RUN_MINUTES = Number(process.env.RUN_MINUTES || 340);
-const FB = process.env.FIREBASE_SERVICE_ACCOUNT && process.env.FIREBASE_DB_URL
-  ? makeFirebase(process.env.FIREBASE_SERVICE_ACCOUNT, process.env.FIREBASE_DB_URL) : null;
+// адреса бази: перша з кандидатів, що відповідає (регіон бази наперед невідомий)
+let FB = null, DB_URL = '';
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  for (const url of String(process.env.FIREBASE_DB_URL || '').split(/\s+/).filter(Boolean)) {
+    const fb = makeFirebase(process.env.FIREBASE_SERVICE_ACCOUNT, url);
+    try { await fb.patch('meta', { checkedAt: new Date().toISOString() }); FB = fb; DB_URL = url.replace(/\/+$/, ''); break; }
+    catch (e) { console.log(`база ${url} не підійшла: ${e.message}`); }
+  }
+  if (DB_URL) {
+    const f = 'site/index.html';
+    writeFileSync(f, readFileSync(f, 'utf8').replaceAll('__FIREBASE_DB_URL__', DB_URL));
+  }
+}
 const INTERVAL_DAY = FB ? 60_000 : 300_000; // з Firebase щохвилини; лише Pages — раз на 5 хв (частіше GitHub гальмує)
 const INTERVAL_NIGHT = 600_000;   // вночі (02:00–07:59 за Києвом): раз на 10 хв
 const PAGES_URL = 'https://slade444.github.io/misciavzali/data/';
@@ -86,7 +97,7 @@ async function pushFirebase(slug, json) {
   }
   last[slug] = cur;
 }
-log(FB ? 'режим: Firebase, щохвилини' : 'режим: лише GitHub Pages, раз на 5 хв');
+log(FB ? `режим: Firebase (${DB_URL}), щохвилини` : 'режим: лише GitHub Pages, раз на 5 хв');
 if (FB) { try { await deploy(); log('сайт опубліковано'); } catch (e) { log(`публікація сайту не вдалася: ${e.message}`); } }
 
 while (Date.now() < until) {
