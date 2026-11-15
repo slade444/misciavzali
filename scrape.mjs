@@ -2,6 +2,13 @@
 export const CINEMAS = ['vinnytsia', 'chernivtsi', 'odessa', 'kyiv'];
 const DAYS = 3; // скільки днів наперед зберігати
 
+function endFrom(start, runtime) {
+  const [h, m] = String(start || '').split(':').map(Number), r = Number(runtime);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || !(r > 0)) return '';
+  const t = (h * 60 + m + r) % 1440;
+  return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+}
+
 export async function scrapeCinema(page, slug) {
   const URL = `https://cinemaciti.ua/ua/cinema-city-${slug}/now/`;
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -25,7 +32,8 @@ export async function scrapeCinema(page, slug) {
         sessions: (md.sessions || []).map(s => ({
           hallNumber: s.hallNumber,
           timeStart: s.timeStart,
-          timeEnd: s.timeEnd,
+          // сайт прибирає timeEnd, щойно сеанс почався; тоді рахуємо: початок + тривалість фільму (так само рахує й сайт)
+          timeEnd: s.timeEnd || endFrom(s.timeStart, mv.runtime),
           stringStatusSeat: s.stringStatusSeat,
           numberSeats: s.numberSeats,
         })),
