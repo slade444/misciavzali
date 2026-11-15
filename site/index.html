@@ -53,6 +53,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 @media (prefers-reduced-motion:no-preference){.switch .track,.switch .track::after{transition:all .15s}}
 .pill.next{color:var(--accent)}
 .hall-note{color:var(--muted);font-size:13px;align-self:center;padding:4px}
+.note{margin:-8px 0 0;font-size:12px;color:var(--muted)}
 .tabs{display:flex;flex-wrap:wrap;gap:6px}
 .tab{all:unset;cursor:pointer;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-weight:600}
 .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -137,6 +138,7 @@ textarea{width:100%;box-sizing:border-box;min-height:90px;background:var(--bg);b
 
   <nav class="tabs" id="tabs" role="tablist" aria-label="Кінотеатр"></nav>
   <div class="banner" id="banner"></div>
+  <p class="note">* «до» — кінець фільму без урахування реклами, за даними сайту кінотеатру. Реклама додає приблизно 10–20 хв.</p>
   <div class="stats" id="stats"></div>
   <div class="halls" id="halls"></div>
 
@@ -212,10 +214,19 @@ function hallsFor(raw,date){
   }
   return list;
 }
+const AD_MAX=25;
 function isCurrent(s,isToday){
   if(!isToday)return false;
   const n=nowMin(),st=toMin(s.time);
-  if(s.end){let en=toMin(s.end);if(en<=st)en+=1440;return n>=st&&n<en} // є час закінчення з сайту
+  // кінець із сайту — без реклами (реклама ~10–20 хв перед фільмом), тож сеанс вважаємо поточним
+  // до початку наступного в цьому залі, але не довше ніж кінець + 25 хв
+  if(s.end){
+    if(n<st)return false;
+    let en=toMin(s.end);if(en<=st)en+=1440;
+    if(n>=en+AD_MAX)return false;
+    for(const o of s.siblings){if(o!==s){const t=toMin(o.time);if(t>st&&t<=n)return false}}
+    return true;
+  }
   if(n<st||n-st>180)return false; // без часу закінчення: вважаємо, що йде не довше 3 год
   for(const o of s.siblings){if(o!==s){const t=toMin(o.time);if(t>st&&t<=n)return false}}
   return true;
@@ -354,7 +365,7 @@ function render(){
       const pct=s.total?Math.min(100,Math.round(s.sold/s.total*100)):0;
       const el=document.createElement('button');el.type='button';
       el.className='tile'+(now?' now':'')+(past?' past':'');
-      el.innerHTML=`<span class="time"><span>${esc(hhmm(s.time))}</span>${now?'<span class="pill">йде зараз</span>':(s===nextS?'<span class="pill next">наступний</span>':'')}</span>${s.end?`<span class="end">до ${esc(s.end)}</span>`:''}<span class="title">${esc(s.title)}</span>${s.sold?`<span class="cnt"><b>${s.sold}</b> / ${s.total||'?'}</span>`:'<span class="cnt none">немає куплених</span>'}<span class="bar"><i style="width:${pct}%"></i></span>`;
+      el.innerHTML=`<span class="time"><span>${esc(hhmm(s.time))}</span>${now?'<span class="pill">йде зараз</span>':(s===nextS?'<span class="pill next">наступний</span>':'')}</span>${s.end?`<span class="end" title="Кінець фільму без урахування реклами">до ${esc(s.end)}*</span>`:''}<span class="title">${esc(s.title)}</span>${s.sold?`<span class="cnt"><b>${s.sold}</b> / ${s.total||'?'}</span>`:'<span class="cnt none">немає куплених</span>'}<span class="bar"><i style="width:${pct}%"></i></span>`;
       el.title=`${s.title} · ${hhmm(s.time)} · продано ${s.sold}`;
       el.onclick=()=>openDlg(s);
       tl.appendChild(el);
@@ -367,7 +378,7 @@ function render(){
 function openDlg(s){dlg.session=s;dlg.orig=false;drawDlg();$('overlay').hidden=false;$('closeDlg').focus()}
 function drawDlg(){
   const s=dlg.session;if(!s)return;
-  $('dlgTitle').innerHTML=`${esc(s.title)}<span>${esc(cinema.name)} · зал ${s.hall} · ${esc(hhmm(s.time))}${s.end?'–'+esc(s.end):''} · ${esc(fmtDate(state.date))}</span>`;
+  $('dlgTitle').innerHTML=`${esc(s.title)}<span>${esc(cinema.name)} · зал ${s.hall} · ${esc(hhmm(s.time))}${s.end?'–'+esc(s.end)+' (кінець без реклами)':''} · ${esc(fmtDate(state.date))}</span>`;
   $('toggleOrig').textContent=dlg.orig?'Поточний вигляд':'Оригінал з сайту';
   const rows=clean(s.seatStr).split('/').filter(r=>r.length);
   const w=rows.reduce((m,r)=>Math.max(m,r.length),0);
