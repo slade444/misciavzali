@@ -20,7 +20,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   }
   if (DB_URL) {
     const f = 'site/index.html';
-    writeFileSync(f, readFileSync(f, 'utf8').replaceAll('__FIREBASE_DB_URL__', DB_URL));
+    writeFileSync(f, readFileSync(f, 'utf8').replaceAll('__FIREBASE_DB_URL__', DB_URL).replace('__BUILD__', process.env.GITHUB_SHA || ''));
   }
 }
 const INTERVAL_DAY = FB ? 60_000 : 300_000; // з Firebase щохвилини; лише Pages — раз на 5 хв (частіше GitHub гальмує)
@@ -102,7 +102,7 @@ let siteOk = false;
 async function ensureSite() {
   try {
     const h = await (await fetch('https://slade444.github.io/misciavzali/?t=' + Date.now(), { cache: 'no-store' })).text();
-    if (h.includes(DB_URL)) { if (!siteOk) log('сайт на GitHub Pages уже з живими даними'); siteOk = true; return; }
+    if (h.includes(DB_URL) && h.includes(`content="${GITHUB_SHA}"`)) { if (!siteOk) log('сайт на GitHub Pages уже з живими даними'); siteOk = true; return; }
   } catch {}
   try { await deploy(); log('сайт опубліковано, перевірю ще раз за 5 хв'); } catch (e) { log(`публікація сайту не вдалася: ${e.message}`); }
 }
