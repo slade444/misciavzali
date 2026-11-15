@@ -106,12 +106,42 @@ async function ensureSite() {
   } catch {}
   try { await deploy(); log('сайт опубліковано, перевірю ще раз за 5 хв'); } catch (e) { log(`публікація сайту не вдалася: ${e.message}`); }
 }
+// Ручна тривалість сеансів: сайт кладе запит у /inbox (лише з правильним PIN — це перевіряють правила бази),
+// збирач переносить його в /durations (читати може кожен, писати — лише збирач).
+const PIN = String(process.env.EDIT_PIN || '').trim();
+if (FB && PIN) {
+  try {
+    await FB.rules({ rules: {
+      cinemas: { '.read': true, '.write': false },
+      durations: { '.read': true, '.write': false },
+      inbox: { $id: {
+        '.write': `!data.exists() && newData.child('pin').val() === ${JSON.stringify(PIN)}`,
+        '.validate': "newData.hasChildren(['pin','slug','key','min']) && newData.child('min').isNumber() && (newData.child('min').val() === 0 || (newData.child('min').val() >= 30 && newData.child('min').val() <= 400))",
+      } },
+    } });
+    log('правила бази оновлено (редагування тривалості з PIN)');
+  } catch (e) { log(`правила бази не оновлено: ${e.message}`); }
+} else if (FB) log('EDIT_PIN не задано — редагування тривалості вимкнене');
+async function processInbox() {
+  const inbox = await FB.get('inbox');
+  if (!inbox) return;
+  for (const [id, x] of Object.entries(inbox)) {
+    if (x && CINEMAS.includes(x.slug) && typeof x.key === 'string' && /^[^.#$\[\]\/]{1,120}$/.test(x.key)) {
+      const path = `durations/${x.slug}/${x.key}`;
+      if (x.min === 0) await FB.del(path);
+      else await FB.put(path, { title: String(x.title || '').slice(0, 200), min: x.min, updatedAt: new Date().toISOString() });
+      log(`тривалість: ${x.slug} «${x.title}» → ${x.min || 'як на сайті'}`);
+    }
+    await FB.del(`inbox/${id}`);
+  }
+}
 if (FB) await ensureSite();
 
 while (Date.now() < until) {
   const started = Date.now();
   let ok = 0;
   round++;
+  if (FB && PIN) { try { await processInbox(); } catch (e) { log(`черга тривалостей: ${e.message}`); } }
   for (const slug of CINEMAS) {
     try {
       const { json, sessions } = await scrapeCinema(page, slug);

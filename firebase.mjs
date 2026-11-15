@@ -28,11 +28,16 @@ export function makeFirebase(saJson, dbUrl) {
   async function call(method, path, body) {
     const r = await fetch(`${base}/${path}.json`, {
       method, headers: { Authorization: `Bearer ${await accessToken()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!r.ok) throw new Error(`Firebase ${method} ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    return method === 'GET' ? r.json() : null;
   }
-  return { put: (p, b) => call('PUT', p, b), patch: (p, b) => call('PATCH', p, b) };
+  return {
+    put: (p, b) => call('PUT', p, b), patch: (p, b) => call('PATCH', p, b),
+    get: p => call('GET', p), del: p => call('DELETE', p),
+    rules: r => call('PUT', '.settings/rules', r),
+  };
 }
 
 // moveArray → плоский словник сеансів {ключ: {d,h,t,m,s,n}}

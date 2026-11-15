@@ -41,6 +41,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          EDIT_PIN: ${{ secrets.EDIT_PIN }}
           FIREBASE_DB_URL: >-
             https://misciavzali-default-rtdb.europe-west1.firebasedatabase.app
             https://misciavzali-default-rtdb.firebaseio.com

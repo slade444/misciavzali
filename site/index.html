@@ -53,7 +53,18 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 @media (prefers-reduced-motion:no-preference){.switch .track,.switch .track::after{transition:all .15s}}
 .pill.next{color:var(--accent)}
 .hall-note{color:var(--muted);font-size:13px;align-self:center;padding:4px}
-.note{margin:-8px 0 0;font-size:12px;color:var(--muted)}
+.tile .end.exact{color:var(--fg)}
+.dur-list{display:flex;flex-direction:column;gap:6px}
+.dur-row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.dur-row .t{min-width:0}
+.dur-row .t small{display:block;color:var(--muted);font-size:12px}
+.dur-row input{width:72px}
+input.num,input.pin{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+input.pin{width:110px}
+.btn.sm{padding:6px 10px;font-size:13px}
+.link{all:unset;cursor:pointer;color:var(--accent);font-weight:600;text-decoration:underline}
+.link:focus-visible{outline:2px solid var(--accent)}
+@media (max-width:520px){.dur-row{grid-template-columns:1fr auto auto}.dur-row .reset{grid-column:2/4;justify-self:end}}
 .tabs{display:flex;flex-wrap:wrap;gap:6px}
 .tab{all:unset;cursor:pointer;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-weight:600}
 .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -138,9 +149,17 @@ textarea{width:100%;box-sizing:border-box;min-height:90px;background:var(--bg);b
 
   <nav class="tabs" id="tabs" role="tablist" aria-label="Кінотеатр"></nav>
   <div class="banner" id="banner"></div>
-  <p class="note">* «до» — кінець фільму без урахування реклами, за даними сайту кінотеатру. Реклама додає приблизно 10–20 хв.</p>
   <div class="stats" id="stats"></div>
   <div class="halls" id="halls"></div>
+  <details class="howto" id="durPanel">
+    <summary>Тривалість сеансів (з рекламою)</summary>
+    <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px">
+      <p style="margin:0;color:var(--muted);max-width:65ch">Сайт кінотеатру знає лише тривалість фільму. Впишіть повну тривалість сеансу з рекламою (як у програмі), і час закінчення рахуватиметься точно для всіх сеансів цього фільму в цьому кінотеатрі.</p>
+      <label for="pin" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">PIN для змін <input class="pin" id="pin" type="password" inputmode="numeric" autocomplete="off"></label>
+      <div class="dur-list" id="durList"></div>
+      <div class="msg" id="durMsg" role="status"></div>
+    </div>
+  </details>
 
   </div>
 
@@ -201,7 +220,9 @@ function hallsFor(raw,date){
         for(const s of (md.sessions||[])){
           const h=Number(s.hallNumber);
           if(!halls.has(h))halls.set(h,{hall:h,seats:Number(s.numberSeats)||0,sessions:[]});
-          halls.get(h).sessions.push({title:mv.title||'—',time:s.timeStart,end:s.timeEnd?hhmm(s.timeEnd):'',seatStr:s.stringStatusSeat||'',total:Number(s.numberSeats)||0,hall:h});
+          const dm=dur[filmKey(mv.title)];
+          const siteEnd=s.timeEnd?hhmm(s.timeEnd):'';
+          halls.get(h).sessions.push({title:mv.title||'—',time:s.timeStart,siteEnd,exact:!!(dm&&dm.min),end:dm&&dm.min?plusMin(s.timeStart,dm.min):siteEnd,seatStr:s.stringStatusSeat||'',total:Number(s.numberSeats)||0,hall:h});
         }
       }
     }
@@ -215,11 +236,24 @@ function hallsFor(raw,date){
   return list;
 }
 const AD_MAX=25;
+let dur={},durEs=null;
+const filmKey=t=>String(t||'—').replace(/[.#$\[\]\/]/g,'-').slice(0,120);
+const plusMin=(t,m)=>{const x=(toMin(t)+m)%1440;return pad(Math.floor(x/60))+':'+pad(x%60)};
+function connectDur(){
+  if(!DB_URL)return;
+  if(durEs)durEs.close();
+  const want=cinema.slug;dur={};
+  durEs=new EventSource(DB_URL+'/durations/'+want+'.json');
+  const apply=()=>{if(want!==cinema.slug)return;if(state.raw){render();if(dlg.session)drawDlg()}};
+  durEs.addEventListener('put',ev=>{try{const {path,data}=JSON.parse(ev.data);const k=path.split('/').filter(Boolean)[0];if(!k)dur=data||{};else if(data===null)delete dur[k];else dur[k]=Object.assign({},dur[k],path.split('/').filter(Boolean).length>1?{[path.split('/').filter(Boolean)[1]]:data}:data);apply()}catch(e){}});
+  durEs.addEventListener('patch',ev=>{try{const {path,data}=JSON.parse(ev.data);const k=path.split('/').filter(Boolean)[0];if(k)dur[k]=Object.assign({},dur[k],data);else Object.assign(dur,data);apply()}catch(e){}});
+}
 function isCurrent(s,isToday){
   if(!isToday)return false;
   const n=nowMin(),st=toMin(s.time);
   // кінець із сайту — без реклами (реклама ~10–20 хв перед фільмом), тож сеанс вважаємо поточним
   // до початку наступного в цьому залі, але не довше ніж кінець + 25 хв
+  if(s.exact){let en=toMin(s.end);if(en<=st)en+=1440;return n>=st&&n<en} // тривалість із реклами, введена вручну — точна
   if(s.end){
     if(n<st)return false;
     let en=toMin(s.end);if(en<=st)en+=1440;
@@ -307,7 +341,7 @@ function drawTabs(){
 }
 function selectCinema(slug){
   const c=CINEMAS.find(x=>x.slug===slug);if(!c||c===cinema)return;
-  cinema=c;state={raw:null,savedAt:null,demo:false,date:null};loadErr=null;fb=null;if(es){es.close();es=null}
+  cinema=c;state={raw:null,savedAt:null,demo:false,date:null};loadErr=null;fb=null;if(es){es.close();es=null}connectDur();
   try{localStorage.setItem('mvz_cinema',slug)}catch(e){}
   if(location.hash!=='#'+slug)history.replaceState(null,'','#'+slug);
   drawTabs();$('halls').innerHTML='<div class="empty">Завантаження…</div>';$('stats').innerHTML='';$('banner').textContent='';
@@ -317,8 +351,44 @@ $('simple').checked=simple;
 $('simple').addEventListener('change',e=>{simple=e.target.checked;try{localStorage.setItem('mvz_simple',simple?'1':'0')}catch(err){}if(state.raw)render()});
 $('tabs').addEventListener('click',e=>{const b=e.target.closest('.tab');if(b)selectCinema(b.dataset.slug)});
 addEventListener('hashchange',()=>selectCinema(location.hash.slice(1)));
-drawTabs();
+drawTabs();connectDur();
 $('dateSel').onchange=e=>{state.date=e.target.value;render()};
+
+/* ---------- тривалості ---------- */
+try{$('pin').value=localStorage.getItem('mvz_pin')||''}catch(e){}
+$('pin').addEventListener('change',e=>{try{localStorage.setItem('mvz_pin',e.target.value.trim())}catch(err){}});
+function drawDurList(halls){
+  const L=$('durList');
+  if(L.contains(document.activeElement))return; // не перемальовувати, поки людина вводить
+  const films=new Map();
+  for(const h of halls)for(const x of h.sessions){
+    if(films.has(x.title))continue;
+    let rt='';if(x.siteEnd){let m=toMin(x.siteEnd)-toMin(x.time);if(m<=0)m+=1440;rt=m}
+    films.set(x.title,rt);
+  }
+  if(!DB_URL){L.innerHTML='<span class="hall-note">Недоступно без бази даних.</span>';return}
+  L.innerHTML=[...films].sort((a,b)=>a[0].localeCompare(b[0],'uk')).map(([t,rt])=>{
+    const k=filmKey(t),d=dur[k];
+    return `<div class="dur-row" data-key="${esc(k)}" data-title="${esc(t)}"><span class="t">${esc(t)}<small>${rt?'на сайті фільм '+rt+' хв':''}${d&&d.min?' · зараз задано '+d.min+' хв':''}</small></span><input class="num" type="number" inputmode="numeric" min="30" max="400" placeholder="хв" value="${d&&d.min?d.min:''}" aria-label="Тривалість сеансу, хв: ${esc(t)}"><button class="btn sm" type="button" data-act="save">Зберегти</button>${d&&d.min?'<button class="link reset" type="button" data-act="reset">як на сайті</button>':'<span></span>'}</div>`}).join('')||'<span class="hall-note">На цю дату сеансів немає.</span>';
+}
+$('durList').addEventListener('click',async e=>{
+  const btn=e.target.closest('button[data-act]');if(!btn)return;
+  const row=btn.closest('.dur-row'),msg=$('durMsg');
+  const pin=$('pin').value.trim();
+  if(!pin){msg.className='msg err';msg.textContent='Введіть PIN.';$('pin').focus();return}
+  try{localStorage.setItem('mvz_pin',pin)}catch(err){}
+  const min=btn.dataset.act==='reset'?0:Math.round(Number(row.querySelector('input').value));
+  if(min!==0&&!(min>=30&&min<=400)){msg.className='msg err';msg.textContent='Тривалість має бути від 30 до 400 хв.';return}
+  btn.disabled=true;msg.className='msg';msg.textContent='Зберігаю…';
+  try{
+    const r=await fetch(DB_URL+'/inbox.json',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin,slug:cinema.slug,key:row.dataset.key,title:row.dataset.title,min})});
+    if(r.status===401||r.status===403){msg.className='msg err';msg.textContent='Невірний PIN.';return}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    msg.className='msg ok';msg.textContent=min?`Збережено: «${row.dataset.title}» — ${min} хв. З’явиться на сайті протягом хвилини.`:`«${row.dataset.title}»: повернуто час із сайту. Оновиться протягом хвилини.`;
+    document.activeElement&&document.activeElement.blur();
+  }catch(err){msg.className='msg err';msg.textContent='Не вдалося зберегти. Перевірте зв’язок і спробуйте ще раз.'}
+  finally{btn.disabled=false}
+});
 
 /* ---------- render ---------- */
 function render(){
@@ -329,6 +399,7 @@ function render(){
   const halls=hallsFor(state.raw,state.date);
   if(dlg.session){const o=dlg.session,m=halls.flatMap(h=>h.sessions).find(x=>x.hall===o.hall&&x.time===o.time&&x.title===o.title);if(m)dlg.session=m}
 
+  drawDurList(halls);
   const ageMin=Math.round((Date.now()-state.savedAt)/60000);
   const b=$('banner');
   const at=new Date(state.savedAt).toLocaleString('uk-UA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
@@ -365,7 +436,7 @@ function render(){
       const pct=s.total?Math.min(100,Math.round(s.sold/s.total*100)):0;
       const el=document.createElement('button');el.type='button';
       el.className='tile'+(now?' now':'')+(past?' past':'');
-      el.innerHTML=`<span class="time"><span>${esc(hhmm(s.time))}</span>${now?'<span class="pill">йде зараз</span>':(s===nextS?'<span class="pill next">наступний</span>':'')}</span>${s.end?`<span class="end" title="Кінець фільму без урахування реклами">до ${esc(s.end)}*</span>`:''}<span class="title">${esc(s.title)}</span>${s.sold?`<span class="cnt"><b>${s.sold}</b> / ${s.total||'?'}</span>`:'<span class="cnt none">немає куплених</span>'}<span class="bar"><i style="width:${pct}%"></i></span>`;
+      el.innerHTML=`<span class="time"><span>${esc(hhmm(s.time))}</span>${now?'<span class="pill">йде зараз</span>':(s===nextS?'<span class="pill next">наступний</span>':'')}</span>${s.end?`<span class="end${s.exact?' exact':''}">до ${esc(s.end)}</span>`:''}<span class="title">${esc(s.title)}</span>${s.sold?`<span class="cnt"><b>${s.sold}</b> / ${s.total||'?'}</span>`:'<span class="cnt none">немає куплених</span>'}<span class="bar"><i style="width:${pct}%"></i></span>`;
       el.title=`${s.title} · ${hhmm(s.time)} · продано ${s.sold}`;
       el.onclick=()=>openDlg(s);
       tl.appendChild(el);
@@ -378,7 +449,7 @@ function render(){
 function openDlg(s){dlg.session=s;dlg.orig=false;drawDlg();$('overlay').hidden=false;$('closeDlg').focus()}
 function drawDlg(){
   const s=dlg.session;if(!s)return;
-  $('dlgTitle').innerHTML=`${esc(s.title)}<span>${esc(cinema.name)} · зал ${s.hall} · ${esc(hhmm(s.time))}${s.end?'–'+esc(s.end)+' (кінець без реклами)':''} · ${esc(fmtDate(state.date))}</span>`;
+  $('dlgTitle').innerHTML=`${esc(s.title)}<span>${esc(cinema.name)} · зал ${s.hall} · ${esc(hhmm(s.time))}${s.end?'–'+esc(s.end):''} · ${esc(fmtDate(state.date))}</span>`;
   $('toggleOrig').textContent=dlg.orig?'Поточний вигляд':'Оригінал з сайту';
   const rows=clean(s.seatStr).split('/').filter(r=>r.length);
   const w=rows.reduce((m,r)=>Math.max(m,r.length),0);
@@ -389,8 +460,9 @@ function drawDlg(){
     html+=`<span class="${cls}">${dlg.orig?esc(c===' '?'':c):''}</span>`}}
   g.innerHTML=html||'<span>Схема залу недоступна</span>';
   const pct=s.total?Math.round(s.sold/s.total*100):0;
-  $('dlgFoot').innerHTML=`<span>Продано: <b>${s.sold}</b></span><span>Вільно: <b>${free}</b></span><span>Усього місць: <b>${s.total||'?'}</b></span><span>Заповненість: <b>${pct}%</b></span>`;
+  $('dlgFoot').innerHTML=`<button class="link" type="button" id="editDur">Змінити тривалість</button><span>Продано: <b>${s.sold}</b></span><span>Вільно: <b>${free}</b></span><span>Усього місць: <b>${s.total||'?'}</b></span><span>Заповненість: <b>${pct}%</b></span>`;
 }
+$('dlgFoot').addEventListener('click',e=>{if(e.target.id!=='editDur')return;const t=dlg.session&&dlg.session.title;closeDlg();const p=$('durPanel');p.open=true;const row=[...document.querySelectorAll('.dur-row')].find(r=>r.dataset.title===t);(row||p).scrollIntoView({behavior:'smooth',block:'center'});if(row)setTimeout(()=>row.querySelector('input').focus(),300)});
 $('toggleOrig').onclick=()=>{dlg.orig=!dlg.orig;drawDlg()};
 const closeDlg=()=>{$('overlay').hidden=true;dlg.session=null};
 $('closeDlg').onclick=closeDlg;
