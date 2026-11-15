@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore: ['inspect.mjs', '.github/workflows/inspect.yml']
 
 permissions:
   contents: read
