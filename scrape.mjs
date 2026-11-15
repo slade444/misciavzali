@@ -25,6 +25,7 @@ export async function scrapeCinema(page, slug) {
         sessions: (md.sessions || []).map(s => ({
           hallNumber: s.hallNumber,
           timeStart: s.timeStart,
+          timeEnd: s.timeEnd,
           stringStatusSeat: s.stringStatusSeat,
           numberSeats: s.numberSeats,
         })),

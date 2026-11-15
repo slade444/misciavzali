@@ -72,6 +72,7 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:8px;pa
 .tile{all:unset;box-sizing:border-box;cursor:pointer;width:150px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;background:var(--bg)}
 .tile:hover{border-color:var(--accent)}
 .tile .time{font-family:var(--mono);font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+.tile .end{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:-3px}
 .tile .title{font-size:12px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;min-height:2.5em}
 .tile .cnt{font-variant-numeric:tabular-nums;font-size:13px}
 .tile .cnt b{font-size:15px}
@@ -197,7 +198,7 @@ function hallsFor(raw,date){
         for(const s of (md.sessions||[])){
           const h=Number(s.hallNumber);
           if(!halls.has(h))halls.set(h,{hall:h,seats:Number(s.numberSeats)||0,sessions:[]});
-          halls.get(h).sessions.push({title:mv.title||'—',time:s.timeStart,seatStr:s.stringStatusSeat||'',total:Number(s.numberSeats)||0,hall:h});
+          halls.get(h).sessions.push({title:mv.title||'—',time:s.timeStart,end:s.timeEnd?hhmm(s.timeEnd):'',seatStr:s.stringStatusSeat||'',total:Number(s.numberSeats)||0,hall:h});
         }
       }
     }
@@ -213,7 +214,8 @@ function hallsFor(raw,date){
 function isCurrent(s,isToday){
   if(!isToday)return false;
   const n=nowMin(),st=toMin(s.time);
-  if(n<st||n-st>180)return false; // сеанс без тривалості в даних: вважаємо, що йде не довше 3 год
+  if(s.end){let en=toMin(s.end);if(en<=st)en+=1440;return n>=st&&n<en} // є час закінчення з сайту
+  if(n<st||n-st>180)return false; // без часу закінчення: вважаємо, що йде не довше 3 год
   for(const o of s.siblings){if(o!==s){const t=toMin(o.time);if(t>st&&t<=n)return false}}
   return true;
 }
@@ -226,7 +228,7 @@ let busy=false,es=null,fb=null,rafPending=false;
 function toRaw(sessions){
   const byDate={};
   for(const k in sessions){const x=sessions[k];if(!x)continue;
-    (byDate[x.d]=byDate[x.d]||[]).push({title:x.m,showDates:[{date:x.d,sessions:[{hallNumber:x.h,timeStart:x.t,stringStatusSeat:x.s,numberSeats:x.n}]}]})}
+    (byDate[x.d]=byDate[x.d]||[]).push({title:x.m,showDates:[{date:x.d,sessions:[{hallNumber:x.h,timeStart:x.t,timeEnd:x.e,stringStatusSeat:x.s,numberSeats:x.n}]}]})}
   return {showDates:Object.keys(byDate).map(d=>({date:d,movies:byDate[d]}))};
 }
 function setPath(path,val){
@@ -351,7 +353,7 @@ function render(){
       const pct=s.total?Math.min(100,Math.round(s.sold/s.total*100)):0;
       const el=document.createElement('button');el.type='button';
       el.className='tile'+(now?' now':'')+(past?' past':'');
-      el.innerHTML=`<span class="time">${esc(hhmm(s.time))}${now?'<span class="pill">йде зараз</span>':(s===nextS?'<span class="pill next">наступний</span>':'')}</span><span class="title">${esc(s.title)}</span>${s.sold?`<span class="cnt"><b>${s.sold}</b> / ${s.total||'?'}</span>`:'<span class="cnt none">немає куплених</span>'}<span class="bar"><i style="width:${pct}%"></i></span>`;
+      el.innerHTML=`<span class="time"><span>${esc(hhmm(s.time))}</span>${now?'<span class="pill">йде зараз</span>':(s===nextS?'<span class="pill next">наступний</span>':'')}</span>${s.end?`<span class="end">до ${esc(s.end)}</span>`:''}<span class="title">${esc(s.title)}</span>${s.sold?`<span class="cnt"><b>${s.sold}</b> / ${s.total||'?'}</span>`:'<span class="cnt none">немає куплених</span>'}<span class="bar"><i style="width:${pct}%"></i></span>`;
       el.title=`${s.title} · ${hhmm(s.time)} · продано ${s.sold}`;
       el.onclick=()=>openDlg(s);
       tl.appendChild(el);
@@ -364,7 +366,7 @@ function render(){
 function openDlg(s){dlg.session=s;dlg.orig=false;drawDlg();$('overlay').hidden=false;$('closeDlg').focus()}
 function drawDlg(){
   const s=dlg.session;if(!s)return;
-  $('dlgTitle').innerHTML=`${esc(s.title)}<span>${esc(cinema.name)} · зал ${s.hall} · ${esc(hhmm(s.time))} · ${esc(fmtDate(state.date))}</span>`;
+  $('dlgTitle').innerHTML=`${esc(s.title)}<span>${esc(cinema.name)} · зал ${s.hall} · ${esc(hhmm(s.time))}${s.end?'–'+esc(s.end):''} · ${esc(fmtDate(state.date))}</span>`;
   $('toggleOrig').textContent=dlg.orig?'Поточний вигляд':'Оригінал з сайту';
   const rows=clean(s.seatStr).split('/').filter(r=>r.length);
   const w=rows.reduce((m,r)=>Math.max(m,r.length),0);

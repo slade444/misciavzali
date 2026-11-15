@@ -45,7 +45,7 @@ export function flatten(moveArray) {
         for (const s of md.sessions || []) {
           const t = String(s.timeStart || '').slice(0, 5);
           const key = `${d}_${s.hallNumber}_${t.replace(':', '-')}`.replace(/[.#$\[\]\/]/g, '-');
-          out[key] = { d, h: Number(s.hallNumber), t, m: mv.title || '—', s: s.stringStatusSeat || '', n: Number(s.numberSeats) || 0 };
+          out[key] = { d, h: Number(s.hallNumber), t, e: String(s.timeEnd || '').slice(0, 5), m: mv.title || '—', s: s.stringStatusSeat || '', n: Number(s.numberSeats) || 0 };
         }
       }
   return out;
