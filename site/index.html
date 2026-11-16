@@ -75,6 +75,9 @@ input.pin{width:110px}
 .tab{all:unset;cursor:pointer;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-weight:600}
 .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
 .tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.clock{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px;margin-block:-8px;display:flex;justify-content:center;border-bottom:1px solid var(--line)}
+.clock span{font-family:var(--mono);font-weight:600;font-size:34px;letter-spacing:.04em;font-variant-numeric:tabular-nums;line-height:1.1}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 .stats{display:flex;flex-wrap:wrap;gap:10px}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;min-width:140px;flex:1 1 140px}
 .stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
@@ -156,6 +159,7 @@ textarea{width:100%;box-sizing:border-box;min-height:90px;background:var(--bg);b
   <nav class="tabs" id="tabs" role="tablist" aria-label="Кінотеатр"></nav>
   <div class="banner" id="banner"></div>
   <div class="stats" id="stats"></div>
+  <div class="clock" role="timer" aria-label="Поточний час за Києвом"><span id="clock">--:--:--</span></div>
   <div class="halls" id="halls"></div>
   <details class="howto" id="durPanel">
     <summary>Тривалість сеансів (з рекламою)</summary>
@@ -485,6 +489,11 @@ $('closeDlg').onclick=closeDlg;
 $('overlay').addEventListener('click',e=>{if(e.target===$('overlay'))closeDlg()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('overlay').hidden)closeDlg()});
 
+(function tick(){
+  const el=$('clock');
+  el.textContent=new Date().toLocaleTimeString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+  setTimeout(tick,1000-Date.now()%1000+5);
+})();
 fetchData();
 // живий потік із бази + страховка: кожні 30 с оновлюємо «хв тому» і перевіряємо зв’язок; після повернення на вкладку — одразу
 setInterval(()=>{if(document.hidden)return;if(DB_URL&&es&&es.readyState!==2){if(state.raw)render()}else fetchData()},30000);
