@@ -14,3 +14,6 @@ jobs:
           curl -s "https://api.telegram.org/bot$T/getChat?chat_id=-1003966176178" | jq -c '{ok, chat: .result.title, type: .result.type, error: .description}'
           ME=$(curl -s "https://api.telegram.org/bot$T/getMe" | jq -r .result.id)
           curl -s "https://api.telegram.org/bot$T/getChatMember?chat_id=-1003966176178&user_id=$ME" | jq -c '{ok, status: .result.status, can_post: .result.can_post_messages, error: .description}'
+      - name: Сеанси Вінниці в базі за датами
+        run: |
+          curl -s "https://misciavzali-default-rtdb.europe-west1.firebasedatabase.app/cinemas/vinnytsia/sessions.json" | jq -c '[.[]|.d]|group_by(.)|map({date:.[0],sessions:length})'
