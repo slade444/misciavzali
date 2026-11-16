@@ -1,0 +1,16 @@
+name: Перевірка Telegram
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Бот і доступ до чату (без надсилання повідомлень)
+        env:
+          T: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          curl -s "https://api.telegram.org/bot$T/getMe" | jq -c '{ok, bot: .result.username, error: .description}'
+          curl -s "https://api.telegram.org/bot$T/getChat?chat_id=-1003966176178" | jq -c '{ok, chat: .result.title, type: .result.type, error: .description}'
+          ME=$(curl -s "https://api.telegram.org/bot$T/getMe" | jq -r .result.id)
+          curl -s "https://api.telegram.org/bot$T/getChatMember?chat_id=-1003966176178&user_id=$ME" | jq -c '{ok, status: .result.status, can_post: .result.can_post_messages, error: .description}'

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths-ignore: ['inspect.mjs', '.github/workflows/inspect.yml']
+    paths-ignore: ['.github/workflows/tgcheck.yml']
 
 permissions:
   contents: read
