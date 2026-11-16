@@ -68,7 +68,7 @@ export function makeNotifier({ token, fb, log }) {
       }
       due.sort((a, b) => a[1].h - b[1].h);
       for (const [key, s] of due) {
-        const text = `🔴 <b>${esc(NAMES[slug] || slug)} · Зал ${s.h} · ${esc(s.t)}</b>\n«${esc(s.m)}»\nКуплених квитків немає — зал можна вимикати.`;
+        const text = `🔴 <b>Зал ${s.h} · ${esc(s.t)}</b>\n«${esc(s.m)}»\nКуплених квитків немає — зал можна вимикати.`;
         try {
           await send(text);
           sent.add(`${slug}/${key}`);
