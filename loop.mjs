@@ -8,6 +8,7 @@ import { DefaultArtifactClient } from '@actions/artifact';
 import * as core from '@actions/core';
 import { CINEMAS, scrapeCinema } from './scrape.mjs';
 import { makeFirebase, flatten } from './firebase.mjs';
+import { makeNotifier } from './notify.mjs';
 
 const RUN_MINUTES = Number(process.env.RUN_MINUTES || 340);
 // адреса бази: перша з кандидатів, що відповідає (регіон бази наперед невідомий)
@@ -135,6 +136,8 @@ async function processInbox() {
     await FB.del(`inbox/${id}`);
   }
 }
+const TG = makeNotifier({ token: String(process.env.TELEGRAM_BOT_TOKEN || '').trim(), fb: FB, log });
+if (TG) await TG.check(); else log('TELEGRAM_BOT_TOKEN не задано — сповіщення вимкнені');
 if (FB) await ensureSite();
 
 while (Date.now() < until) {
@@ -147,6 +150,7 @@ while (Date.now() < until) {
       const { json, sessions } = await scrapeCinema(page, slug);
       writeFileSync(`site/data/${slug}.json`, json);
       if (FB) await pushFirebase(slug, json);
+      if (TG) await TG.scan(slug, json);
       ok++;
       if (round === 1) log(`${slug}: ${sessions} сеансів`);
     } catch (e) { log(`${slug} ПОМИЛКА: ${e.message}`); delete last[slug]; }
