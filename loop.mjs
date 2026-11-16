@@ -85,18 +85,24 @@ let deployFails = 0, extraWait = 0, staleCount = 0;
 
 const last = {};   // що вже записано в Firebase, по містах
 let round = 0;
+// Минулі дні сайт кінотеатру прибирає — у базі їх лишаємо (з останніми відомими продажами) ще на KEEP_PAST_DAYS днів
+const KEEP_PAST_DAYS = 2;
+const kyivDate = (days = 0) => new Date(Date.now() + days * 864e5).toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
 async function pushFirebase(slug, json) {
   const { updatedAt, moveArray } = JSON.parse(json);
-  const cur = flatten(moveArray), prev = last[slug];
-  if (!prev) {
-    await FB.put(`cinemas/${slug}`, { updatedAt, sessions: cur });
-  } else {
-    const upd = { updatedAt };
-    for (const k in cur) if (JSON.stringify(cur[k]) !== JSON.stringify(prev[k])) upd[`sessions/${k}`] = cur[k];
-    for (const k in prev) if (!(k in cur)) upd[`sessions/${k}`] = null;
-    await FB.patch(`cinemas/${slug}`, upd);
+  const cur = flatten(moveArray);
+  if (!last[slug]) last[slug] = (await FB.get(`cinemas/${slug}/sessions`)) || {};
+  const prev = last[slug], today = kyivDate(), oldest = kyivDate(-KEEP_PAST_DAYS);
+  const next = { ...cur }, upd = { updatedAt };
+  for (const k in cur) if (JSON.stringify(cur[k]) !== JSON.stringify(prev[k])) upd[`sessions/${k}`] = cur[k];
+  for (const k in prev) {
+    if (k in cur) continue;
+    const d = prev[k] && prev[k].d;
+    if (d && d < today && d >= oldest) next[k] = prev[k];   // минулий день — зберігаємо
+    else upd[`sessions/${k}`] = null;                        // старіше або скасований сеанс — прибираємо
   }
-  last[slug] = cur;
+  await FB.patch(`cinemas/${slug}`, upd);
+  last[slug] = next;
 }
 log(FB ? `режим: Firebase (${DB_URL}), щохвилини` : 'режим: лише GitHub Pages, раз на 5 хв');
 let siteOk = false;

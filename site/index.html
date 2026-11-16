@@ -408,9 +408,9 @@ $('durList').addEventListener('click',async e=>{
 
 /* ---------- render ---------- */
 function render(){
-  const ds=dates(state.raw);const today=todayStr();
+  const ds=dates(state.raw);const today=todayStr();const yesterday=new Date(Date.now()-864e5).toLocaleDateString('sv-SE',{timeZone:'Europe/Kyiv'});
   if(!state.date||!ds.includes(state.date))state.date=ds.includes(today)?today:(ds[0]||today);
-  $('dateSel').innerHTML=ds.map(d=>`<option value="${d}"${d===state.date?' selected':''}>${esc(fmtDate(d))}${d===today?' · сьогодні':''}</option>`).join('');
+  $('dateSel').innerHTML=ds.map(d=>`<option value="${d}"${d===state.date?' selected':''}>${esc(fmtDate(d))}${d===today?' · сьогодні':d===yesterday?' · вчора':''}${d<today?' (архів)':''}</option>`).join('');
   const isToday=state.date===today;
   const halls=hallsFor(state.raw,state.date);
   if(dlg.session){const o=dlg.session,m=halls.flatMap(h=>h.sessions).find(x=>x.hall===o.hall&&x.time===o.time&&x.title===o.title);if(m)dlg.session=m}
