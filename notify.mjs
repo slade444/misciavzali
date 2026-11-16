@@ -36,13 +36,23 @@ export function makeNotifier({ token, fb, log }) {
     } catch (e) { log(`сповіщення: не прочитав історію — ${e.message}`); }
   }
 
+  // Повертає 'ok' | 'maybe' (збій Telegram — повідомлення могло дійти, повторювати не можна) | кидає помилку (точно не дійшло)
   async function send(text) {
-    const r = await fetch(api('sendMessage'), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true }),
-    });
+    let r;
+    try {
+      r = await fetch(api('sendMessage'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch (e) {
+      if (e.name === 'TimeoutError') return 'maybe';  // запит пішов, відповіді не дочекались
+      throw e;                                        // не з'єднались — можна повторити
+    }
+    if (r.status >= 500) return 'maybe';               // 502/504: Telegram часто все одно доставляє із запізненням
     const j = await r.json().catch(() => ({}));
     if (!j.ok) throw new Error(`Telegram ${r.status}: ${j.description || ''}`);
+    return 'ok';
   }
 
   return {
@@ -70,10 +80,10 @@ export function makeNotifier({ token, fb, log }) {
       for (const [key, s] of due) {
         const text = `🔴 <b>Зал ${s.h} · ${esc(s.t)}</b>\n«${esc(s.m)}»\nКуплених немає — можна вимикати.`;
         try {
-          await send(text);
+          const res = await send(text);
           sent.add(`${slug}/${key}`);
           if (fb) await fb.put(`notified/${slug}/${key}`, true).catch(() => {});
-          log(`Telegram: ${slug} зал ${s.h} ${s.t} «${s.m}» — немає куплених`);
+          log(`Telegram: ${slug} зал ${s.h} ${s.t} «${s.m}» — немає куплених${res === 'maybe' ? ' (збій Telegram — не повторюю, щоб не було дублів)' : ''}`);
         } catch (e) { log(`Telegram: не надіслано — ${e.message}`); }
       }
     },
