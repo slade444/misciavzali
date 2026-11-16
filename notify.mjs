@@ -6,6 +6,7 @@ const AFTER_MIN = 15;   // через скільки хвилин після п�
 const WINDOW_MIN = 45;  // до якої хвилини після початку ще можна надіслати (якщо збирач перезапускався)
 const NAMES = { vinnytsia: 'Вінниця', chernivtsi: 'Чернівці', odessa: 'Одеса', kyiv: 'Київ' };
 const SOLD = new Set(['S', 'V', 'T']);
+const ONLY = new Set(['vinnytsia']); // поки що сповіщення лише для Вінниці
 
 const kyivNow = () => {
   const d = new Date();
@@ -53,6 +54,7 @@ export function makeNotifier({ token, fb, log }) {
       } catch (e) { log(`Telegram: немає зв'язку — ${e.message}`); return false; }
     },
     async scan(slug, json) {
+      if (!ONLY.has(slug)) return;
       await load();
       const { moveArray } = JSON.parse(json);
       const { date, min: now } = kyivNow();
